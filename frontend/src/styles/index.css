@@ -3,28 +3,71 @@
 @tailwind utilities;
 
 :root {
-  --bg-1: #f8fafc;
-  --bg-2: #e0f2fe;
-  --bg-3: #cffafe;
+  --bg: #f1f5f9;
+  --surface: #ffffff;
+  --border: #e2e8f0;
+  --muted: #64748b;
+  --accent: #0ea5e9;
+  --accent-hover: #0284c7;
 }
 
 body {
   margin: 0;
-  font-family: "Manrope", ui-sans-serif, system-ui;
-  background:
-    radial-gradient(circle at 15% 20%, rgba(6, 182, 212, 0.18), transparent 36%),
-    radial-gradient(circle at 85% 10%, rgba(245, 158, 11, 0.12), transparent 30%),
-    linear-gradient(160deg, var(--bg-1), var(--bg-2) 45%, var(--bg-3));
+  font-family: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  background: var(--bg);
   color: #0f172a;
   min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
 }
 
 #root {
   min-height: 100vh;
 }
 
+/* Modern card: clean surface, subtle shadow, no glass */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
 .glass {
-  background: rgba(255, 255, 255, 0.76);
-  border: 1px solid rgba(148, 163, 184, 0.28);
-  backdrop-filter: blur(9px);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+/* Form elements */
+.input {
+  @apply rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm text-ink outline-none transition-colors focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20;
+}
+
+.file-block {
+  @apply flex flex-col rounded-lg border border-slate-200 bg-slate-50/50 p-4 transition-colors hover:border-slate-300;
+}
+
+.file-label {
+  @apply mb-2 text-sm font-medium text-slate-700;
+}
+
+.file-input {
+  @apply text-sm text-slate-600 file:mr-3 file:rounded-md file:border-0 file:bg-cyan-500 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-white file:transition hover:file:opacity-90;
+}
+
+.file-count {
+  @apply mt-2 text-xs text-slate-500;
+}
+
+/* Buttons & links */
+.btn-primary {
+  @apply inline-flex items-center justify-center rounded-lg bg-ink px-5 py-2.5 text-sm font-semibold text-white shadow-card transition hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+.btn-secondary {
+  @apply rounded-lg border border-cyan-200 bg-cyan-50 px-4 py-2 text-sm font-medium text-cyan-700 transition hover:bg-cyan-100 hover:border-cyan-300 focus:outline-none focus:ring-2 focus:ring-cyan-500/20;
+}
+
+.link-pill {
+  @apply inline-flex items-center rounded-md bg-cyan-50 px-2.5 py-1 text-xs font-medium text-cyan-700 transition hover:bg-cyan-100;
 }

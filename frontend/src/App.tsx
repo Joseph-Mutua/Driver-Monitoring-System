@@ -102,13 +102,12 @@ export default function App() {
   }, [canPoll, currentTrip]);
 
   return (
-    <main className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-8 md:px-8">
-      <header className="animate-rise">
-        <p className="font-display text-xs uppercase tracking-[0.25em] text-cyan-700">DMS + ADAS Suite</p>
-        <h1 className="mt-2 font-display text-4xl font-bold text-ink md:text-5xl">Trip Safety Intelligence</h1>
-        <p className="mt-3 max-w-3xl text-slate-700">
-          Upload front and cabin streams, process with synchronized DMS and ADAS analytics, and review event clips,
-          timeline, scores, and downloadable PDF reports.
+    <main className="mx-auto flex max-w-5xl flex-col gap-8 px-4 py-10 sm:px-6 lg:px-8">
+      <header className="animate-rise border-b border-slate-200/80 pb-8">
+        <p className="font-display text-xs font-semibold uppercase tracking-[0.2em] text-cyan-600">DMS + ADAS</p>
+        <h1 className="mt-2 font-display text-3xl font-bold tracking-tight text-ink sm:text-4xl">Trip Safety Intelligence</h1>
+        <p className="mt-3 max-w-2xl text-sm leading-relaxed text-slate-600">
+          Upload front and cabin streams, run synchronized DMS and ADAS analytics, and review events, scores, and PDF reports.
         </p>
       </header>
 
@@ -128,7 +127,11 @@ export default function App() {
       />
 
       {currentTrip && <JobProgress trip={currentTrip} />}
-      {error && <p className="rounded-xl bg-rose/10 p-3 text-sm font-semibold text-rose">{error}</p>}
+      {error && (
+        <div className="animate-rise rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
+          {error}
+        </div>
+      )}
 
       {scores && (
         <KPIGrid

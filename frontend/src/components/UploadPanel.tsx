@@ -32,51 +32,55 @@ export default function UploadPanel(props: Props) {
   } = props;
 
   return (
-    <section className="glass animate-rise rounded-3xl p-6 shadow-glow">
-      <div className="mb-4 flex items-center gap-3">
-        <UploadCloud className="h-6 w-6 text-cyan" />
-        <h2 className="font-display text-2xl font-semibold">Trip Uploader</h2>
+    <section className="card animate-rise p-6 shadow-card">
+      <div className="mb-6 flex items-center gap-3">
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-cyan-soft">
+          <UploadCloud className="h-5 w-5 text-cyan-500" />
+        </div>
+        <div>
+          <h2 className="font-display text-xl font-semibold text-ink">Trip Uploader</h2>
+          <p className="text-xs text-slate-500">Front camera required, cabin optional</p>
+        </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <input
           value={dayFolder}
           onChange={(e) => onDayFolder(e.target.value)}
           placeholder="Day folder (e.g. 251101)"
-          className="rounded-xl border border-slate-300 bg-white px-4 py-3"
+          className="input"
         />
         <input
           value={driverId}
           onChange={(e) => onDriverId(e.target.value)}
           placeholder="Driver ID (optional)"
-          className="rounded-xl border border-slate-300 bg-white px-4 py-3"
+          className="input"
         />
         <input
           value={vehicleId}
           onChange={(e) => onVehicleId(e.target.value)}
           placeholder="Vehicle ID (optional)"
-          className="rounded-xl border border-slate-300 bg-white px-4 py-3"
+          className="input"
         />
       </div>
 
-      <div className="mt-4 grid gap-4 md:grid-cols-2">
-        <label className="rounded-xl border border-slate-300 bg-white p-4 text-sm">
-          <p className="mb-2 font-semibold">Front stream files (mandatory)</p>
-          <input type="file" multiple accept=".mp4" onChange={(e) => onFrontFiles(Array.from(e.target.files ?? []))} />
-          <p className="mt-2 text-xs text-slate-600">Selected: {frontFiles.length}</p>
+      <div className="mt-5 grid gap-4 sm:grid-cols-2">
+        <label className="file-block">
+          <span className="file-label">Front stream (required)</span>
+          <input type="file" multiple accept=".mp4" className="file-input" onChange={(e) => onFrontFiles(Array.from(e.target.files ?? []))} />
+          <span className="file-count">{frontFiles.length} file{frontFiles.length !== 1 ? "s" : ""} selected</span>
         </label>
-
-        <label className="rounded-xl border border-slate-300 bg-white p-4 text-sm">
-          <p className="mb-2 font-semibold">Cabin stream files (optional)</p>
-          <input type="file" multiple accept=".mp4" onChange={(e) => onCabinFiles(Array.from(e.target.files ?? []))} />
-          <p className="mt-2 text-xs text-slate-600">Selected: {cabinFiles.length}</p>
+        <label className="file-block">
+          <span className="file-label">Cabin stream (optional)</span>
+          <input type="file" multiple accept=".mp4" className="file-input" onChange={(e) => onCabinFiles(Array.from(e.target.files ?? []))} />
+          <span className="file-count">{cabinFiles.length} file{cabinFiles.length !== 1 ? "s" : ""} selected</span>
         </label>
       </div>
 
       <button
         onClick={onAnalyze}
         disabled={disabled || frontFiles.length === 0}
-        className="mt-5 rounded-xl bg-ink px-5 py-3 font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-45"
+        className="btn-primary mt-6"
       >
         Upload and Analyze Trip
       </button>
