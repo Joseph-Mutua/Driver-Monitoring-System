@@ -33,6 +33,7 @@ class Trip(Base):
 
     report_json_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     report_pdf_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    timeline_start_iso: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     events: Mapped[list[Event]] = relationship(back_populates="trip", cascade="all, delete-orphan")
     score: Mapped[Score | None] = relationship(back_populates="trip", cascade="all, delete-orphan", uselist=False)

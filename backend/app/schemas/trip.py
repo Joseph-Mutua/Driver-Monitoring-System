@@ -31,6 +31,8 @@ class EventOut(BaseModel):
     snapshot_url: str | None = None
     clip_url: str | None = None
     metadata: dict = Field(default_factory=dict)
+    start_display_time: str | None = None
+    end_display_time: str | None = None
 
 
 class ScoreOut(BaseModel):

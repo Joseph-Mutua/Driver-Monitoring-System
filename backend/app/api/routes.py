@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import shutil
 import uuid
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
@@ -184,6 +185,18 @@ def get_trip(trip_id: str, db: Session = Depends(get_db)) -> TripOut:
     return _trip_to_out(trip)
 
 
+def _event_display_time(timeline_start_iso: str | None, offset_ms: int) -> str | None:
+    """Format event time as in video overlay: 2023-11-01, 21:49:25"""
+    if not timeline_start_iso:
+        return None
+    try:
+        base = datetime.fromisoformat(timeline_start_iso.replace("Z", "+00:00"))
+        dt = base + timedelta(milliseconds=offset_ms)
+        return dt.strftime("%Y-%m-%d, %H:%M:%S")
+    except (ValueError, TypeError):
+        return None
+
+
 @router.get("/trips/{trip_id}/events", response_model=list[EventOut])
 def get_trip_events(trip_id: str, db: Session = Depends(get_db)) -> list[EventOut]:
     trip = db.get(Trip, trip_id)
@@ -212,6 +225,8 @@ def get_trip_events(trip_id: str, db: Session = Depends(get_db)) -> list[EventOu
                 snapshot_url=row.snapshot_url,
                 clip_url=row.clip_url,
                 metadata=metadata,
+                start_display_time=_event_display_time(trip.timeline_start_iso, row.ts_ms_start),
+                end_display_time=_event_display_time(trip.timeline_start_iso, row.ts_ms_end),
             )
         )
     return out

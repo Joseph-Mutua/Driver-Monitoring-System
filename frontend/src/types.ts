@@ -37,6 +37,8 @@ export type EventItem = {
   snapshot_url?: string | null;
   clip_url?: string | null;
   metadata: Record<string, string | number | boolean>;
+  start_display_time?: string | null;
+  end_display_time?: string | null;
 };
 
 export type Score = {

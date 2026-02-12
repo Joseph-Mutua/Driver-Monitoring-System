@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from collections import Counter, deque
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -102,6 +102,36 @@ def _estimate_sync_offset(front: list[Segment], cabin: list[Segment]) -> float:
     if not front or not cabin:
         return 0.0
     return float(cabin[0].start_sec - front[0].start_sec)
+
+
+def _parse_day_folder_to_date(day_folder: str | None) -> date | None:
+    """Parse day_folder (YYMMDD or YYYYMMDD) to date. Matches video overlay style 2023-11-01."""
+    if not day_folder or not day_folder.isdigit():
+        return None
+    s = day_folder.strip()
+    if len(s) == 6:  # YYMMDD
+        y, m, d = int(s[0:2]), int(s[2:4]), int(s[4:6])
+        year = 2000 + y if y < 100 else y
+        try:
+            return date(year, m, d)
+        except ValueError:
+            return None
+    if len(s) == 8:  # YYYYMMDD
+        y, m, d = int(s[0:4]), int(s[4:6]), int(s[6:8])
+        try:
+            return date(y, m, d)
+        except ValueError:
+            return None
+    return None
+
+
+def _timeline_start_iso(day_date: date | None, first_segment_start_sec: int) -> str | None:
+    """Build ISO datetime for timeline start: date + time-of-day from first segment (video overlay style)."""
+    if day_date is None:
+        return None
+    base = datetime.combine(day_date, datetime.min.time())
+    start_dt = base + timedelta(seconds=first_segment_start_sec)
+    return start_dt.strftime("%Y-%m-%dT%H:%M:%S")
 
 
 def _video_meta(path: Path) -> tuple[float, float]:
@@ -213,6 +243,36 @@ def _score_trip(events: list[dict[str, Any]], duration_seconds: float) -> dict[s
     }
 
 
+def _event_display_time(timeline_start_iso: str | None, offset_ms: int) -> str:
+    """Format event time as in video overlay: 2023-11-01, 21:49:25"""
+    if not timeline_start_iso:
+        return f"{offset_ms} ms"
+    try:
+        base = datetime.fromisoformat(timeline_start_iso.replace("Z", "+00:00"))
+        dt = base + timedelta(milliseconds=offset_ms)
+        return dt.strftime("%Y-%m-%d, %H:%M:%S")
+    except (ValueError, TypeError):
+        return f"{offset_ms} ms"
+
+
+def _severity_grade(value: float) -> str:
+    if value < 0.3:
+        return "Low"
+    if value < 0.6:
+        return "Moderate"
+    return "High"
+
+
+# Score labels and short descriptions for PDF (aligned with UI)
+PDF_SCORE_LABELS: list[tuple[str, str, str]] = [
+    ("Overall", "overall_score", "Average of all safety categories (0-100)."),
+    ("Fatigue", "fatigue_score", "Drowsiness & microsleep detection (0-100)."),
+    ("Distraction", "distraction_score", "Eyes off road, phone, seatbelt (0-100)."),
+    ("Lane", "lane_score", "Lane keeping & deviation (0-100)."),
+    ("Following", "following_distance_score", "Tailgating & obstruction ahead (0-100)."),
+]
+
+
 def _write_pdf_summary(trip: Trip, scores: dict[str, Any], events: list[dict[str, Any]], out_pdf: Path) -> None:
     pdf = FPDF()
     pdf.add_page()
@@ -222,28 +282,78 @@ def _write_pdf_summary(trip: Trip, scores: dict[str, Any], events: list[dict[str
     pdf.set_font("Helvetica", size=11)
     pdf.cell(0, 8, f"Trip ID: {trip.id}", ln=1)
     pdf.cell(0, 8, f"Status: {trip.status}", ln=1)
+    pdf.cell(0, 8, f"Day folder: {trip.day_folder or '-'}", ln=1)
     pdf.cell(0, 8, f"Driver: {trip.driver_id or '-'}", ln=1)
     pdf.cell(0, 8, f"Vehicle: {trip.vehicle_id or '-'}", ln=1)
     pdf.cell(0, 8, f"Duration: {trip.duration_seconds:.1f} sec", ln=1)
 
-    pdf.ln(4)
+    pdf.ln(5)
     pdf.set_font("Helvetica", "B", 13)
-    pdf.cell(0, 8, "Scores", ln=1)
-    pdf.set_font("Helvetica", size=11)
-    pdf.cell(0, 7, f"Overall: {scores['overall_score']}", ln=1)
-    pdf.cell(0, 7, f"Fatigue: {scores['fatigue_score']}", ln=1)
-    pdf.cell(0, 7, f"Distraction: {scores['distraction_score']}", ln=1)
-    pdf.cell(0, 7, f"Lane: {scores['lane_score']}", ln=1)
-    pdf.cell(0, 7, f"Following Distance: {scores['following_distance_score']}", ln=1)
-
-    pdf.ln(4)
-    pdf.set_font("Helvetica", "B", 13)
-    pdf.cell(0, 8, "Top Events", ln=1)
+    pdf.cell(0, 8, "Scores (0-100, higher is better)", ln=1)
     pdf.set_font("Helvetica", size=10)
+    for label, key, desc in PDF_SCORE_LABELS:
+        val = scores.get(key, 0)
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.cell(0, 6, f"{label}: {val:.1f}", ln=1)
+        pdf.set_font("Helvetica", size=9)
+        pdf.multi_cell(0, 5, desc[:95], ln=1)
+        pdf.set_font("Helvetica", size=10)
+    pdf.ln(3)
 
-    for ev in events[:20]:
-        line = f"{ev['type']} | {ev['clip_name']} | {ev['ts_ms_start']}ms | sev={ev['severity']:.2f}"
-        pdf.cell(0, 6, line[:110], ln=1)
+    pdf.set_font("Helvetica", "B", 13)
+    pdf.cell(0, 8, "Event Timeline", ln=1)
+    pdf.set_font("Helvetica", size=8)
+    # Severity legend
+    pdf.cell(0, 5, "Severity: Low (0.0-0.3) | Moderate (0.3-0.6) | High (0.6-1.0)", ln=1)
+    pdf.ln(2)
+
+    # Table columns (widths in mm)
+    col_type, col_stream, col_start, col_end, col_sev = 42, 18, 38, 38, 24
+
+    timeline_iso = getattr(trip, "timeline_start_iso", None)
+    # Header row
+    pdf.set_font("Helvetica", "B", 8)
+    pdf.cell(col_type, 6, "Type", border=1)
+    pdf.cell(col_stream, 6, "Stream", border=1)
+    pdf.cell(col_start, 6, "Start", border=1)
+    pdf.cell(col_end, 6, "End", border=1)
+    pdf.cell(col_sev, 6, "Severity", border=1)
+    pdf.ln(6)
+
+    # Sort by severity descending (like UI)
+    sorted_events = sorted(events, key=lambda e: (e.get("severity") or 0), reverse=True)
+
+    def _draw_table_header() -> None:
+        pdf.set_font("Helvetica", "B", 8)
+        pdf.cell(col_type, 6, "Type", border=1)
+        pdf.cell(col_stream, 6, "Stream", border=1)
+        pdf.cell(col_start, 6, "Start", border=1)
+        pdf.cell(col_end, 6, "End", border=1)
+        pdf.cell(col_sev, 6, "Severity", border=1)
+        pdf.ln(6)
+
+    pdf.set_font("Helvetica", size=8)
+    for ev in sorted_events:
+        if pdf.get_y() > 270:
+            pdf.add_page()
+            _draw_table_header()
+        start_str = _event_display_time(timeline_iso, ev["ts_ms_start"])
+        end_str = _event_display_time(timeline_iso, ev["ts_ms_end"])
+        sev_val = ev.get("severity", 0)
+        sev_grade = _severity_grade(sev_val)
+        sev_str = f"{sev_val:.2f} ({sev_grade})"
+        type_str = (ev.get("type") or "").replace("_", " ")[:25]
+        stream_str = (ev.get("stream") or "")[:8]
+        pdf.cell(col_type, 6, type_str, border=1)
+        pdf.cell(col_stream, 6, stream_str, border=1)
+        pdf.cell(col_start, 6, start_str[:18], border=1)
+        pdf.cell(col_end, 6, end_str[:18], border=1)
+        pdf.cell(col_sev, 6, sev_str[:14], border=1)
+        pdf.ln(6)
+
+    pdf.ln(4)
+    pdf.set_font("Helvetica", size=9)
+    pdf.cell(0, 6, f"Total events: {len(events)}. Report generated from DMS + ADAS analysis.", ln=1)
 
     out_pdf.parent.mkdir(parents=True, exist_ok=True)
     pdf.output(str(out_pdf))
@@ -277,6 +387,9 @@ def process_trip(trip_id: str) -> None:
 
         all_segments = front_segments + cabin_segments
         all_segments.sort(key=lambda s: s.start_sec)
+
+        day_date = _parse_day_folder_to_date(trip.day_folder)
+        trip.timeline_start_iso = _timeline_start_iso(day_date, all_segments[0].start_sec)
 
         face = DriverFaceMonitor(settings.target_fps)
         lane = LaneDeviationDetector(settings.target_fps)
