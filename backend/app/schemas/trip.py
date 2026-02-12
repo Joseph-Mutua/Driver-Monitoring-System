@@ -62,3 +62,12 @@ class LegacyJobStatus(BaseModel):
     progress: float = 0.0
     report_path: str | None = None
     error: str | None = None
+
+
+class BulkDeleteRequest(BaseModel):
+    trip_ids: list[str] = Field(default_factory=list, max_length=100)
+
+
+class BulkDeleteResponse(BaseModel):
+    deleted: list[str] = Field(default_factory=list)
+    failed: list[dict] = Field(default_factory=list)  # [{"id": "...", "detail": "..."}]

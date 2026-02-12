@@ -13,6 +13,8 @@ from app.core.config import settings
 from app.db import get_db
 from app.models import Event, Score, Trip
 from app.schemas.trip import (
+    BulkDeleteRequest,
+    BulkDeleteResponse,
     EventOut,
     LegacyJobStatus,
     ScoreOut,
@@ -117,6 +119,55 @@ def complete_upload(trip_id: str, background_tasks: BackgroundTasks, db: Session
 
     background_tasks.add_task(process_trip, trip_id)
     return TripCompleteResponse(trip_id=trip.id, status=trip.status, message=trip.message)
+
+
+def _delete_trip_files(trip_id: str, upload_dir_path: str | None) -> None:
+    """Remove on-disk upload and report directories for a trip."""
+    if upload_dir_path:
+        try:
+            shutil.rmtree(upload_dir_path, ignore_errors=True)
+        except OSError:
+            pass
+    report_path = Path(settings.report_dir) / trip_id
+    try:
+        shutil.rmtree(report_path, ignore_errors=True)
+    except OSError:
+        pass
+
+
+@router.delete("/trips/{trip_id}")
+def delete_trip(trip_id: str, db: Session = Depends(get_db)) -> dict:
+    """Delete a single trip and all its data (DB + uploads + reports)."""
+    trip = db.get(Trip, trip_id)
+    if not trip:
+        raise HTTPException(status_code=404, detail="Trip not found")
+    upload_dir_path = trip.upload_dir
+    db.delete(trip)
+    db.commit()
+    _delete_trip_files(trip_id, upload_dir_path)
+    return {"deleted": trip_id}
+
+
+@router.post("/trips/bulk-delete", response_model=BulkDeleteResponse)
+def bulk_delete_trips(body: BulkDeleteRequest, db: Session = Depends(get_db)) -> BulkDeleteResponse:
+    """Delete multiple trips and all their data. Returns deleted ids and any failures."""
+    deleted: list[str] = []
+    failed: list[dict] = []
+    for trip_id in body.trip_ids:
+        trip = db.get(Trip, trip_id)
+        if not trip:
+            failed.append({"id": trip_id, "detail": "Trip not found"})
+            continue
+        upload_dir_path = trip.upload_dir
+        try:
+            db.delete(trip)
+            db.commit()
+            _delete_trip_files(trip_id, upload_dir_path)
+            deleted.append(trip_id)
+        except Exception as e:
+            db.rollback()
+            failed.append({"id": trip_id, "detail": str(e)})
+    return BulkDeleteResponse(deleted=deleted, failed=failed)
 
 
 @router.get("/trips", response_model=list[TripOut])

@@ -47,3 +47,16 @@ export async function listTrips(limit = 40) {
   const { data } = await api.get<Trip[]>(`/trips?limit=${limit}`);
   return data;
 }
+
+export async function deleteTrip(tripId: string) {
+  const { data } = await api.delete<{ deleted: string }>(`/trips/${tripId}`);
+  return data;
+}
+
+export async function bulkDeleteTrips(tripIds: string[]) {
+  const { data } = await api.post<{ deleted: string[]; failed: { id: string; detail: string }[] }>(
+    "/trips/bulk-delete",
+    { trip_ids: tripIds }
+  );
+  return data;
+}

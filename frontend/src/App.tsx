@@ -144,7 +144,18 @@ export default function App() {
       )}
 
       {events.length > 0 && <EventsTable events={events} />}
-      <ClipSummaries trips={trips} onOpen={loadTrip} />
+      <ClipSummaries
+        trips={trips}
+        onOpen={loadTrip}
+        onDeleted={async (deletedIds) => {
+          await refreshTrips();
+          if (currentTrip && deletedIds.includes(currentTrip.id)) {
+            setCurrentTrip(null);
+            setEvents([]);
+            setScores(null);
+          }
+        }}
+      />
     </main>
   );
 }
