@@ -1,5 +1,16 @@
 import axios from "axios";
-import type { EventItem, Score, Trip, TripCompleteResponse, TripCreateResponse } from "../types";
+import type {
+  EventItem,
+  MlPipelineActionResponse,
+  MlPipelineJob,
+  MlPipelineJobList,
+  MlPipelineLogResponse,
+  MlPipelineRunRequest,
+  Score,
+  Trip,
+  TripCompleteResponse,
+  TripCreateResponse
+} from "../types";
 
 const api = axios.create({ baseURL: "/api" });
 
@@ -8,14 +19,16 @@ export async function createTrip(params: {
   driverId?: string;
   vehicleId?: string;
   frontFiles: File[];
-  cabinFiles: File[];
+  rearFiles: File[];
+  cabinFiles?: File[];
 }) {
   const form = new FormData();
   form.append("day_folder", params.dayFolder);
   if (params.driverId) form.append("driver_id", params.driverId);
   if (params.vehicleId) form.append("vehicle_id", params.vehicleId);
   params.frontFiles.forEach((f) => form.append("front_files", f));
-  params.cabinFiles.forEach((f) => form.append("cabin_files", f));
+  params.rearFiles.forEach((f) => form.append("rear_files", f));
+  (params.cabinFiles || []).forEach((f) => form.append("cabin_files", f));
 
   const { data } = await api.post<TripCreateResponse>("/trips", form, {
     headers: { "Content-Type": "multipart/form-data" }
@@ -58,5 +71,35 @@ export async function bulkDeleteTrips(tripIds: string[]) {
     "/trips/bulk-delete",
     { trip_ids: tripIds }
   );
+  return data;
+}
+
+export async function runMlPipeline(body: MlPipelineRunRequest) {
+  const { data } = await api.post<MlPipelineJob>("/ml/pipeline/run", body);
+  return data;
+}
+
+export async function listMlPipelineJobs() {
+  const { data } = await api.get<MlPipelineJobList>("/ml/pipeline/jobs");
+  return data;
+}
+
+export async function getMlPipelineJob(jobId: string) {
+  const { data } = await api.get<MlPipelineJob>(`/ml/pipeline/jobs/${jobId}`);
+  return data;
+}
+
+export async function getMlPipelineLog(jobId: string) {
+  const { data } = await api.get<MlPipelineLogResponse>(`/ml/pipeline/jobs/${jobId}/log`);
+  return data;
+}
+
+export async function cancelMlPipelineJob(jobId: string) {
+  const { data } = await api.post<MlPipelineActionResponse>(`/ml/pipeline/jobs/${jobId}/cancel`);
+  return data;
+}
+
+export async function retryMlPipelineJob(jobId: string) {
+  const { data } = await api.post<MlPipelineJob>(`/ml/pipeline/jobs/${jobId}/retry`);
   return data;
 }

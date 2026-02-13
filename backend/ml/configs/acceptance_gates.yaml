@@ -1,0 +1,32 @@
+minimum_metrics:
+  overall:
+    precision: 0.90
+    recall: 0.88
+    f1: 0.89
+  per_event:
+    seatbelt_off:
+      precision: 0.92
+      recall: 0.90
+    phone_in_hand:
+      precision: 0.91
+      recall: 0.90
+    lane_deviation:
+      precision: 0.88
+      recall: 0.86
+    tailgating:
+      precision: 0.87
+      recall: 0.85
+  per_scenario:
+    night:
+      f1: 0.82
+    day:
+      f1: 0.90
+  calibration:
+    max_ece: 0.08
+    max_brier: 0.12
+hard_failures:
+  - id: no_driver_leakage
+    description: train/val/test driver overlap must be zero
+  - id: min_night_samples
+    description: at least 15% night samples in validation
+    threshold: 0.15

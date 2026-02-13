@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
@@ -23,10 +24,102 @@ from app.schemas.trip import (
     TripCreateResponse,
     TripOut,
 )
+from app.schemas.eval import EvalRangeRequest, EvalReportsResponse, EvalRunRequest, EvalRunResponse
+from app.schemas.ml import (
+    MlPipelineActionResponse,
+    MlPipelineJob,
+    MlPipelineJobList,
+    MlPipelineLogResponse,
+    MlPipelineRunRequest,
+)
+from app.services.evaluation_service import list_eval_reports, run_eval_for_date_range, run_eval_from_paths
+from app.services.ml_pipeline_service import ml_pipeline_service
 from app.services.video_processor import process_trip
 from app.utils.file_parser import parse_clip_name
 
 router = APIRouter()
+
+
+@router.post("/evaluation/run", response_model=EvalRunResponse)
+def run_evaluation(body: EvalRunRequest) -> EvalRunResponse:
+    return run_eval_from_paths(
+        ground_truth_path=body.ground_truth_path,
+        predictions_path=body.predictions_path,
+        iou_threshold=body.iou_threshold,
+        tolerance_ms=body.tolerance_ms,
+        bins=body.bins,
+    )
+
+
+@router.post("/evaluation/run-range", response_model=EvalRunResponse)
+def run_evaluation_range(body: EvalRangeRequest, db: Session = Depends(get_db)) -> EvalRunResponse:
+    return run_eval_for_date_range(
+        db=db,
+        ground_truth_path=body.ground_truth_path,
+        date_from=body.date_from,
+        date_to=body.date_to,
+        iou_threshold=body.iou_threshold,
+        tolerance_ms=body.tolerance_ms,
+        bins=body.bins,
+    )
+
+
+@router.get("/evaluation/reports", response_model=EvalReportsResponse)
+def get_evaluation_reports(limit: int = 40) -> EvalReportsResponse:
+    return EvalReportsResponse(reports=list_eval_reports(limit=max(1, min(limit, 200))))
+
+
+@router.post("/ml/pipeline/run", response_model=MlPipelineJob)
+def run_ml_pipeline(body: MlPipelineRunRequest) -> MlPipelineJob:
+    try:
+        return ml_pipeline_service.run(body)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.get("/ml/pipeline/jobs", response_model=MlPipelineJobList)
+def list_ml_jobs() -> MlPipelineJobList:
+    return MlPipelineJobList(jobs=ml_pipeline_service.list_jobs())
+
+
+@router.get("/ml/pipeline/jobs/{job_id}", response_model=MlPipelineJob)
+def get_ml_job(job_id: str) -> MlPipelineJob:
+    job = ml_pipeline_service.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="ML pipeline job not found")
+    return job
+
+
+@router.get("/ml/pipeline/jobs/{job_id}/log", response_model=MlPipelineLogResponse)
+def get_ml_job_log(job_id: str) -> MlPipelineLogResponse:
+    job = ml_pipeline_service.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="ML pipeline job not found")
+    return MlPipelineLogResponse(job_id=job_id, log_tail=ml_pipeline_service.read_log_tail(job_id))
+
+
+@router.post("/ml/pipeline/jobs/{job_id}/cancel", response_model=MlPipelineActionResponse)
+def cancel_ml_job(job_id: str) -> MlPipelineActionResponse:
+    job = ml_pipeline_service.cancel_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="ML pipeline job not found")
+    return MlPipelineActionResponse(job_id=job_id, status=job.status, message=job.message)
+
+
+@router.post("/ml/pipeline/jobs/{job_id}/retry", response_model=MlPipelineJob)
+def retry_ml_job(job_id: str) -> MlPipelineJob:
+    new_job = ml_pipeline_service.retry_job(job_id)
+    if not new_job:
+        raise HTTPException(status_code=404, detail="ML pipeline job not found")
+    return new_job
+
+
+@router.get("/ml/pipeline/jobs/{job_id}/artifacts/{artifact_key}")
+def download_ml_artifact(job_id: str, artifact_key: str):
+    artifact = ml_pipeline_service.artifact_path(job_id, artifact_key)
+    if not artifact:
+        raise HTTPException(status_code=404, detail="Artifact not found")
+    return FileResponse(path=str(artifact), filename=artifact.name)
 
 
 def _trip_to_out(trip: Trip) -> TripOut:
@@ -52,10 +145,12 @@ async def create_trip(
     driver_id: str | None = Form(None),
     vehicle_id: str | None = Form(None),
     front_files: list[UploadFile] = File(...),
+    rear_files: list[UploadFile] | None = File(default=None),
     cabin_files: list[UploadFile] | None = File(default=None),
     db: Session = Depends(get_db),
 ) -> TripCreateResponse:
     valid_front = [f for f in front_files if f.filename and f.filename.lower().endswith(".mp4")]
+    valid_rear = [f for f in (rear_files or []) if f.filename and f.filename.lower().endswith(".mp4")]
     valid_cabin = [f for f in (cabin_files or []) if f.filename and f.filename.lower().endswith(".mp4")]
 
     if not valid_front:
@@ -64,12 +159,19 @@ async def create_trip(
     trip_id = str(uuid.uuid4())
     trip_root = Path(settings.upload_dir) / "trips" / trip_id
     front_dir = trip_root / "front"
+    rear_dir = trip_root / "rear"
     cabin_dir = trip_root / "cabin"
     front_dir.mkdir(parents=True, exist_ok=True)
+    rear_dir.mkdir(parents=True, exist_ok=True)
     cabin_dir.mkdir(parents=True, exist_ok=True)
 
     for upload in valid_front:
         out = front_dir / Path(upload.filename).name
+        with out.open("wb") as handle:
+            shutil.copyfileobj(upload.file, handle)
+
+    for upload in valid_rear:
+        out = rear_dir / Path(upload.filename).name
         with out.open("wb") as handle:
             shutil.copyfileobj(upload.file, handle)
 
@@ -79,7 +181,11 @@ async def create_trip(
             shutil.copyfileobj(upload.file, handle)
 
     front_first = sorted(front_dir.glob("*.mp4"))[0]
-    cabin_first = sorted(cabin_dir.glob("*.mp4"))[0] if valid_cabin else None
+    secondary_first = None
+    if valid_rear:
+        secondary_first = sorted(rear_dir.glob("*.mp4"))[0]
+    elif valid_cabin:
+        secondary_first = sorted(cabin_dir.glob("*.mp4"))[0]
 
     trip = Trip(
         id=trip_id,
@@ -88,7 +194,11 @@ async def create_trip(
         driver_id=driver_id,
         vehicle_id=vehicle_id,
         front_video_url=f"/uploads/trips/{trip_id}/front/{front_first.name}",
-        cabin_video_url=(f"/uploads/trips/{trip_id}/cabin/{cabin_first.name}" if cabin_first else None),
+        cabin_video_url=(
+            f"/uploads/trips/{trip_id}/rear/{secondary_first.name}"
+            if (secondary_first and valid_rear)
+            else (f"/uploads/trips/{trip_id}/cabin/{secondary_first.name}" if secondary_first else None)
+        ),
         upload_dir=str(trip_root.resolve()),
         message="Upload complete",
         progress=0.0,
@@ -100,7 +210,7 @@ async def create_trip(
     return TripCreateResponse(
         trip=_trip_to_out(trip),
         uploaded_front_files=len(valid_front),
-        uploaded_cabin_files=len(valid_cabin),
+        uploaded_cabin_files=len(valid_rear) + len(valid_cabin),
     )
 
 
@@ -262,14 +372,14 @@ async def analyze_day_compat(
     db: Session = Depends(get_db),
 ) -> LegacyJobStatus:
     front: list[UploadFile] = []
-    cabin: list[UploadFile] = []
+    rear: list[UploadFile] = []
 
     for file in files:
         if not file.filename or not file.filename.lower().endswith(".mp4"):
             continue
         parsed = parse_clip_name(file.filename)
         if parsed.stream_hint == "rear":
-            cabin.append(file)
+            rear.append(file)
         else:
             front.append(file)
 
@@ -281,7 +391,8 @@ async def analyze_day_compat(
         driver_id=None,
         vehicle_id=None,
         front_files=front,
-        cabin_files=cabin,
+        rear_files=rear,
+        cabin_files=[],
         db=db,
     )
     complete_upload(response.trip.id, background_tasks=background_tasks, db=db)

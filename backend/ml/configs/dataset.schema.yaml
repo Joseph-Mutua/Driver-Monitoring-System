@@ -1,0 +1,30 @@
+version: 1
+required_fields:
+  - sample_id
+  - image_path
+  - split
+  - driver_id
+  - vehicle_id
+  - stream
+  - scenario
+  - road_type
+  - country
+allowed_values:
+  split: [train, val, test]
+  stream: [front, rear, cabin]
+  scenario: [day, dusk, night]
+  road_type: [urban, highway, rural, mixed]
+  country: [KE]
+optional_fields:
+  - label_path
+  - weather
+  - event_tags
+  - timestamp_utc
+  - speed_kph
+  - camera_id
+classes:
+  0: seatbelt_off
+  1: phone_in_hand
+  2: vehicle
+  3: pedestrian
+  4: motorcycle

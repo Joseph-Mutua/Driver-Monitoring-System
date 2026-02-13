@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import math
+from collections import deque
 from dataclasses import dataclass
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -130,11 +132,13 @@ class LaneDeviationDetector:
     def __init__(self, fps: float):
         self.fps = max(fps, 1.0)
         self.offset_frames = 0
+        self.clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
 
     def detect(self, frame: np.ndarray) -> tuple[bool, float, float]:
         h, w = frame.shape[:2]
         roi = frame[int(h * 0.55):, :]
         gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+        gray = self.clahe.apply(gray)
         blur = cv2.GaussianBlur(gray, (5, 5), 0)
         edges = cv2.Canny(blur, 50, 150)
         lines = cv2.HoughLinesP(edges, 1, np.pi / 180, threshold=40, minLineLength=40, maxLineGap=30)
@@ -176,21 +180,21 @@ class ObjectDetector:
     VEHICLE_CLASSES = {2, 3, 5, 7}
     PHONE_CLASS = 67
 
-    def __init__(self):
+    def __init__(self, model_path: str = "yolov8n.pt"):
         self.limitations: list[str] = []
         self.model = None
         if YOLO:
             try:
-                self.model = YOLO("yolov8n.pt")
+                self.model = YOLO(model_path)
             except Exception:
-                self.limitations.append("YOLO model failed to load: phone/obstruction/tailgating reduced.")
+                self.limitations.append(f"YOLO model failed to load ({model_path}): phone/obstruction/tailgating reduced.")
         else:
             self.limitations.append("Ultralytics unavailable: phone/obstruction/tailgating disabled.")
 
-    def detect(self, frame: np.ndarray) -> list[dict]:
+    def detect(self, frame: np.ndarray, conf: float = 0.35) -> list[dict]:
         if not self.model:
             return []
-        res = self.model.predict(frame, verbose=False, imgsz=640, conf=0.35)
+        res = self.model.predict(frame, verbose=False, imgsz=640, conf=conf)
         out = []
         for r in res:
             if r.boxes is None:
@@ -204,12 +208,40 @@ class ObjectDetector:
 
 
 class SeatbeltDetector:
-    def __init__(self):
+    def __init__(self, model_path: str | None = None):
         self.limitations: list[str] = [
             "Seatbelt detection is heuristic; use a seatbelt-specific model for production certification."
         ]
+        self.model = None
+        if model_path and YOLO and Path(model_path).exists():
+            try:
+                self.model = YOLO(model_path)
+                self.limitations = []
+            except Exception:
+                self.model = None
 
     def detect(self, frame: np.ndarray) -> tuple[bool, float]:
+        if self.model is not None:
+            # Expected custom model classes: seatbelt_on / seatbelt_off (or similar)
+            try:
+                res = self.model.predict(frame, verbose=False, imgsz=640, conf=0.35)
+                off_conf = 0.0
+                for r in res:
+                    if r.boxes is None:
+                        continue
+                    names = r.names if hasattr(r, "names") else {}
+                    for box in r.boxes:
+                        cls = int(box.cls.item())
+                        conf = float(box.conf.item())
+                        label = str(names.get(cls, str(cls))).lower()
+                        if "off" in label or "no" in label:
+                            off_conf = max(off_conf, conf)
+                if off_conf >= 0.4:
+                    return True, min(1.0, off_conf)
+                return False, 0.0
+            except Exception:
+                pass
+
         h, w = frame.shape[:2]
         roi = frame[int(h * 0.35): int(h * 0.85), int(w * 0.15): int(w * 0.70)]
         gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
@@ -273,4 +305,77 @@ def detect_phone_obstruction_tailgating(dets: list[dict], frame_shape: tuple[int
         "tailgating": tailgating,
         "tailgating_conf": tailgating_conf,
         "lead_distance_m": lead_distance_m if lead_distance_m < 999.0 else 0.0,
+        "ttc_sec": 0.0,
     }
+
+
+@dataclass
+class LeadVehicleState:
+    distance_m: float
+    timestamp_sec: float
+
+
+class LeadVehicleTracker:
+    """Lightweight lead-vehicle tracker for TTC estimation."""
+
+    def __init__(self) -> None:
+        self.prev: LeadVehicleState | None = None
+
+    def update(self, scene: dict, timestamp_sec: float) -> dict:
+        distance = float(scene.get("lead_distance_m", 0.0))
+        if distance <= 0:
+            self.prev = None
+            return {"ttc_sec": 0.0, "closing_speed_mps": 0.0}
+
+        ttc = 0.0
+        closing = 0.0
+        if self.prev and timestamp_sec > self.prev.timestamp_sec:
+            dt = timestamp_sec - self.prev.timestamp_sec
+            rel = self.prev.distance_m - distance
+            closing = rel / dt
+            if closing > 0.05:
+                ttc = distance / closing
+
+        self.prev = LeadVehicleState(distance_m=distance, timestamp_sec=timestamp_sec)
+        return {"ttc_sec": round(ttc, 2), "closing_speed_mps": round(closing, 2)}
+
+
+class SceneProfiler:
+    """Estimates lighting and frame reliability to adapt thresholds safely."""
+
+    def __init__(self) -> None:
+        self._light_hist: deque[float] = deque(maxlen=30)
+        self._reliability_hist: deque[float] = deque(maxlen=30)
+
+    def profile(self, frame: np.ndarray) -> dict:
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        mean_luma = float(np.mean(gray))
+        sat = float(np.mean(hsv[:, :, 1]))
+        val = float(np.mean(hsv[:, :, 2]))
+
+        edges = cv2.Canny(gray, 80, 160)
+        edge_density = float(np.mean(edges > 0))
+        blur_var = float(cv2.Laplacian(gray, cv2.CV_64F).var())
+
+        if mean_luma >= 115 and sat >= 42:
+            scenario = "day"
+        elif mean_luma >= 72:
+            scenario = "dusk"
+        else:
+            scenario = "night"
+
+        reliability = min(1.0, max(0.0, (edge_density * 3.0) + min(0.5, blur_var / 350.0)))
+        self._light_hist.append(mean_luma)
+        self._reliability_hist.append(reliability)
+
+        avg_luma = float(np.mean(self._light_hist)) if self._light_hist else mean_luma
+        avg_reliability = float(np.mean(self._reliability_hist)) if self._reliability_hist else reliability
+        return {
+            "scenario": scenario,
+            "mean_luma": round(mean_luma, 2),
+            "mean_val": round(val, 2),
+            "avg_luma": round(avg_luma, 2),
+            "edge_density": round(edge_density, 4),
+            "reliability": round(avg_reliability, 3),
+        }

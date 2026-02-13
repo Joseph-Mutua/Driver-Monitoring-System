@@ -50,3 +50,39 @@ export type Score = {
   overall_score: number;
   details: Record<string, unknown>;
 };
+
+export type MlPipelineRunRequest = {
+  manifest: string;
+  output_root: string;
+  ground_truth?: string;
+};
+
+export type MlPipelineJob = {
+  job_id: string;
+  status: "queued" | "running" | "completed" | "failed" | "cancelled";
+  message: string;
+  manifest: string;
+  output_root: string;
+  ground_truth?: string | null;
+  started_at: string;
+  finished_at?: string | null;
+  log_url?: string | null;
+  artifacts: Record<string, string>;
+  artifact_urls: Record<string, string>;
+  error?: string | null;
+};
+
+export type MlPipelineJobList = {
+  jobs: MlPipelineJob[];
+};
+
+export type MlPipelineLogResponse = {
+  job_id: string;
+  log_tail: string;
+};
+
+export type MlPipelineActionResponse = {
+  job_id: string;
+  status: string;
+  message: string;
+};

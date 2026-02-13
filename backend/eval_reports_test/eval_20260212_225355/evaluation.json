@@ -1,0 +1,446 @@
+{
+  "config": {
+    "iou_threshold": 0.3,
+    "tolerance_ms": 1200,
+    "bins": 10
+  },
+  "dataset": {
+    "ground_truth_events": 3,
+    "predicted_events": 3,
+    "trips_ground_truth": 1,
+    "trips_predicted": 1
+  },
+  "overall": {
+    "tp": 3,
+    "fp": 0,
+    "fn": 0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0
+  },
+  "by_event": {
+    "driver_fatigue": {
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "lane_deviation": {
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "tailgating": {
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    }
+  },
+  "by_stream": {
+    "cabin": {
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "front": {
+      "tp": 2,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    }
+  },
+  "by_scenario": {
+    "day": {
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "night": {
+      "tp": 2,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    }
+  },
+  "calibration": {
+    "ece": 0.0,
+    "brier": 0.0,
+    "bins": [
+      {
+        "bin": 0,
+        "low": 0.0,
+        "high": 0.1,
+        "count": 0,
+        "avg_conf": 0.0,
+        "accuracy": 0.0
+      },
+      {
+        "bin": 1,
+        "low": 0.1,
+        "high": 0.2,
+        "count": 0,
+        "avg_conf": 0.0,
+        "accuracy": 0.0
+      },
+      {
+        "bin": 2,
+        "low": 0.2,
+        "high": 0.30000000000000004,
+        "count": 0,
+        "avg_conf": 0.0,
+        "accuracy": 0.0
+      },
+      {
+        "bin": 3,
+        "low": 0.30000000000000004,
+        "high": 0.4,
+        "count": 0,
+        "avg_conf": 0.0,
+        "accuracy": 0.0
+      },
+      {
+        "bin": 4,
+        "low": 0.4,
+        "high": 0.5,
+        "count": 0,
+        "avg_conf": 0.0,
+        "accuracy": 0.0
+      },
+      {
+        "bin": 5,
+        "low": 0.5,
+        "high": 0.6000000000000001,
+        "count": 0,
+        "avg_conf": 0.0,
+        "accuracy": 0.0
+      },
+      {
+        "bin": 6,
+        "low": 0.6000000000000001,
+        "high": 0.7000000000000001,
+        "count": 0,
+        "avg_conf": 0.0,
+        "accuracy": 0.0
+      },
+      {
+        "bin": 7,
+        "low": 0.7000000000000001,
+        "high": 0.8,
+        "count": 0,
+        "avg_conf": 0.0,
+        "accuracy": 0.0
+      },
+      {
+        "bin": 8,
+        "low": 0.8,
+        "high": 0.9,
+        "count": 0,
+        "avg_conf": 0.0,
+        "accuracy": 0.0
+      },
+      {
+        "bin": 9,
+        "low": 0.9,
+        "high": 1.0,
+        "count": 3,
+        "avg_conf": 1.0,
+        "accuracy": 1.0
+      }
+    ]
+  },
+  "threshold_sweep": {
+    "rows": [
+      {
+        "threshold": 0.1,
+        "tp": 3,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "driver_fatigue_f1": 1.0,
+        "lane_deviation_f1": 1.0,
+        "tailgating_f1": 1.0
+      },
+      {
+        "threshold": 0.15,
+        "tp": 3,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "driver_fatigue_f1": 1.0,
+        "lane_deviation_f1": 1.0,
+        "tailgating_f1": 1.0
+      },
+      {
+        "threshold": 0.2,
+        "tp": 3,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "driver_fatigue_f1": 1.0,
+        "lane_deviation_f1": 1.0,
+        "tailgating_f1": 1.0
+      },
+      {
+        "threshold": 0.25,
+        "tp": 3,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "driver_fatigue_f1": 1.0,
+        "lane_deviation_f1": 1.0,
+        "tailgating_f1": 1.0
+      },
+      {
+        "threshold": 0.3,
+        "tp": 3,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "driver_fatigue_f1": 1.0,
+        "lane_deviation_f1": 1.0,
+        "tailgating_f1": 1.0
+      },
+      {
+        "threshold": 0.35,
+        "tp": 3,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "driver_fatigue_f1": 1.0,
+        "lane_deviation_f1": 1.0,
+        "tailgating_f1": 1.0
+      },
+      {
+        "threshold": 0.4,
+        "tp": 3,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "driver_fatigue_f1": 1.0,
+        "lane_deviation_f1": 1.0,
+        "tailgating_f1": 1.0
+      },
+      {
+        "threshold": 0.45,
+        "tp": 3,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "driver_fatigue_f1": 1.0,
+        "lane_deviation_f1": 1.0,
+        "tailgating_f1": 1.0
+      },
+      {
+        "threshold": 0.5,
+        "tp": 3,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "driver_fatigue_f1": 1.0,
+        "lane_deviation_f1": 1.0,
+        "tailgating_f1": 1.0
+      },
+      {
+        "threshold": 0.55,
+        "tp": 3,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "driver_fatigue_f1": 1.0,
+        "lane_deviation_f1": 1.0,
+        "tailgating_f1": 1.0
+      },
+      {
+        "threshold": 0.6,
+        "tp": 3,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "driver_fatigue_f1": 1.0,
+        "lane_deviation_f1": 1.0,
+        "tailgating_f1": 1.0
+      },
+      {
+        "threshold": 0.65,
+        "tp": 3,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "driver_fatigue_f1": 1.0,
+        "lane_deviation_f1": 1.0,
+        "tailgating_f1": 1.0
+      },
+      {
+        "threshold": 0.7,
+        "tp": 3,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "driver_fatigue_f1": 1.0,
+        "lane_deviation_f1": 1.0,
+        "tailgating_f1": 1.0
+      },
+      {
+        "threshold": 0.75,
+        "tp": 3,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "driver_fatigue_f1": 1.0,
+        "lane_deviation_f1": 1.0,
+        "tailgating_f1": 1.0
+      },
+      {
+        "threshold": 0.8,
+        "tp": 3,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "driver_fatigue_f1": 1.0,
+        "lane_deviation_f1": 1.0,
+        "tailgating_f1": 1.0
+      },
+      {
+        "threshold": 0.85,
+        "tp": 3,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "driver_fatigue_f1": 1.0,
+        "lane_deviation_f1": 1.0,
+        "tailgating_f1": 1.0
+      },
+      {
+        "threshold": 0.9,
+        "tp": 3,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "driver_fatigue_f1": 1.0,
+        "lane_deviation_f1": 1.0,
+        "tailgating_f1": 1.0
+      },
+      {
+        "threshold": 0.95,
+        "tp": 3,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "driver_fatigue_f1": 1.0,
+        "lane_deviation_f1": 1.0,
+        "tailgating_f1": 1.0
+      }
+    ],
+    "global_best": {
+      "threshold": 0.1,
+      "f1": 1.0
+    },
+    "per_event_best": {
+      "driver_fatigue": {
+        "threshold": 0.1,
+        "f1": 1.0
+      },
+      "lane_deviation": {
+        "threshold": 0.1,
+        "f1": 1.0
+      },
+      "tailgating": {
+        "threshold": 0.1,
+        "f1": 1.0
+      }
+    }
+  },
+  "failure_examples": {
+    "false_positives": [],
+    "false_negatives": []
+  },
+  "matches": [
+    {
+      "trip_id": "trip_001",
+      "event_type": "driver_fatigue",
+      "stream": "cabin",
+      "scenario": "night",
+      "gt_id": "trip_001:3",
+      "pred_id": "trip_001:3",
+      "confidence": 1.0,
+      "iou": 1.0,
+      "outcome": "tp"
+    },
+    {
+      "trip_id": "trip_001",
+      "event_type": "lane_deviation",
+      "stream": "front",
+      "scenario": "day",
+      "gt_id": "trip_001:1",
+      "pred_id": "trip_001:1",
+      "confidence": 1.0,
+      "iou": 1.0,
+      "outcome": "tp"
+    },
+    {
+      "trip_id": "trip_001",
+      "event_type": "tailgating",
+      "stream": "front",
+      "scenario": "night",
+      "gt_id": "trip_001:2",
+      "pred_id": "trip_001:2",
+      "confidence": 1.0,
+      "iou": 1.0,
+      "outcome": "tp"
+    }
+  ]
+}

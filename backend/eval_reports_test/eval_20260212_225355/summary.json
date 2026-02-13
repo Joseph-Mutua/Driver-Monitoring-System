@@ -1,0 +1,19 @@
+{
+  "overall": {
+    "tp": 3,
+    "fp": 0,
+    "fn": 0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0
+  },
+  "global_best_threshold": {
+    "threshold": 0.1,
+    "f1": 1.0
+  },
+  "calibration": {
+    "ece": 0.0,
+    "brier": 0.0
+  },
+  "output_dir": "D:\\WORK\\DMS\\backend\\eval_reports_test\\eval_20260212_225355"
+}

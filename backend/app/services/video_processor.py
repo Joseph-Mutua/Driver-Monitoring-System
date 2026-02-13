@@ -14,7 +14,9 @@ from app.db import SessionLocal
 from app.detectors.vision import (
     DriverFaceMonitor,
     LaneDeviationDetector,
+    LeadVehicleTracker,
     ObjectDetector,
+    SceneProfiler,
     SeatbeltDetector,
     detect_phone_obstruction_tailgating,
 )
@@ -31,6 +33,8 @@ EVENT_RULES: dict[str, dict[str, int]] = {
     "seatbelt_not_worn": {"min_duration_ms": 3_000, "cooldown_ms": 20_000},
     "obstruction_ahead": {"min_duration_ms": 800, "cooldown_ms": 4_000},
     "tailgating": {"min_duration_ms": 1_500, "cooldown_ms": 5_000},
+    "rear_obstruction_behind": {"min_duration_ms": 900, "cooldown_ms": 4_000},
+    "rear_tailgating_behind": {"min_duration_ms": 1_500, "cooldown_ms": 5_000},
 }
 
 
@@ -98,10 +102,56 @@ def _ordered_segments(folder: Path, stream: str) -> list[Segment]:
     return segments
 
 
-def _estimate_sync_offset(front: list[Segment], cabin: list[Segment]) -> float:
-    if not front or not cabin:
+def _estimate_sync_offset(front: list[Segment], secondary: list[Segment]) -> float:
+    if not front or not secondary:
         return 0.0
-    return float(cabin[0].start_sec - front[0].start_sec)
+    return float(secondary[0].start_sec - front[0].start_sec)
+
+
+def _adaptive_thresholds(scenario: str, reliability: float) -> dict[str, float]:
+    # Tuned for mixed urban/highway roads where markings and lighting are inconsistent.
+    lane_offset = 0.12
+    tail_distance = 10.0
+    yolo_conf = 0.35
+    min_event_conf = 0.45
+
+    if scenario == "dusk":
+        lane_offset = 0.14
+        tail_distance = 9.0
+        yolo_conf = 0.38
+        min_event_conf = 0.5
+    elif scenario == "night":
+        lane_offset = 0.17
+        tail_distance = 8.5
+        yolo_conf = 0.42
+        min_event_conf = 0.55
+
+    if reliability < 0.45:
+        lane_offset += 0.02
+        yolo_conf = min(0.55, yolo_conf + 0.06)
+        min_event_conf = min(0.7, min_event_conf + 0.08)
+
+    return {
+        "lane_offset": lane_offset,
+        "tail_distance": tail_distance,
+        "yolo_conf": yolo_conf,
+        "min_event_conf": min_event_conf,
+    }
+
+
+def _rear_risk_from_detections(scene: dict[str, Any]) -> tuple[tuple[bool, float], tuple[bool, float]]:
+    distance = float(scene.get("lead_distance_m", 0.0))
+    obstruction = bool(scene.get("obstruction", False))
+    obstruction_conf = float(scene.get("obstruction_conf", 0.0))
+    tailgating = bool(scene.get("tailgating", False))
+    tailgating_conf = float(scene.get("tailgating_conf", 0.0))
+
+    rear_obstruction = obstruction and distance > 0
+    rear_obstruction_conf = max(obstruction_conf, min(1.0, (12.0 - distance) / 15.0)) if rear_obstruction else 0.0
+
+    rear_tailgating = tailgating and distance > 0
+    rear_tailgating_conf = max(tailgating_conf, min(1.0, (9.0 - distance) / 7.0)) if rear_tailgating else 0.0
+    return (rear_obstruction, max(0.0, rear_obstruction_conf)), (rear_tailgating, max(0.0, rear_tailgating_conf))
 
 
 def _parse_day_folder_to_date(day_folder: str | None) -> date | None:
@@ -199,7 +249,7 @@ def _score_trip(events: list[dict[str, Any]], duration_seconds: float) -> dict[s
         "fatigue": {"driver_fatigue", "microsleep"},
         "distraction": {"distracted_driving", "mobile_phone_use", "seatbelt_not_worn"},
         "lane": {"lane_deviation"},
-        "following": {"tailgating", "obstruction_ahead"},
+        "following": {"tailgating", "obstruction_ahead", "rear_obstruction_behind", "rear_tailgating_behind"},
     }
     weights = {
         "driver_fatigue": 2.2,
@@ -210,6 +260,8 @@ def _score_trip(events: list[dict[str, Any]], duration_seconds: float) -> dict[s
         "lane_deviation": 1.5,
         "tailgating": 1.8,
         "obstruction_ahead": 1.4,
+        "rear_obstruction_behind": 1.4,
+        "rear_tailgating_behind": 1.8,
     }
 
     norm = max(1.0, duration_seconds / 3600.0)
@@ -374,18 +426,20 @@ def process_trip(trip_id: str) -> None:
 
         trip_root = Path(trip.upload_dir)
         front_segments = _ordered_segments(trip_root / "front", "front")
+        rear_segments = _ordered_segments(trip_root / "rear", "rear")
         cabin_segments = _ordered_segments(trip_root / "cabin", "cabin")
-        sync_offset = _estimate_sync_offset(front_segments, cabin_segments)
+        secondary_for_sync = cabin_segments if cabin_segments else rear_segments
+        sync_offset = _estimate_sync_offset(front_segments, secondary_for_sync)
         trip.sync_offset_seconds = sync_offset
 
-        if not front_segments and not cabin_segments:
+        if not front_segments and not rear_segments and not cabin_segments:
             trip.status = "failed"
             trip.error = "No video segments found"
             trip.message = "Trip processing failed"
             db.commit()
             return
 
-        all_segments = front_segments + cabin_segments
+        all_segments = front_segments + rear_segments + cabin_segments
         all_segments.sort(key=lambda s: s.start_sec)
 
         day_date = _parse_day_folder_to_date(trip.day_folder)
@@ -393,9 +447,15 @@ def process_trip(trip_id: str) -> None:
 
         face = DriverFaceMonitor(settings.target_fps)
         lane = LaneDeviationDetector(settings.target_fps)
-        seatbelt = SeatbeltDetector()
-        obj = ObjectDetector()
+        seatbelt = SeatbeltDetector(model_path=settings.seatbelt_model_path or None)
+        obj = ObjectDetector(model_path=settings.object_model_path)
+        front_tracker = LeadVehicleTracker()
+        rear_tracker = LeadVehicleTracker()
         limitations = [*face.limitations, *seatbelt.limitations, *obj.limitations]
+        if not cabin_segments:
+            limitations.append(
+                "No cabin camera provided: fatigue/distraction/seatbelt/phone are approximated and should not be used for enforcement."
+            )
 
         debouncer = DebounceEngine()
         perclos_window: deque[tuple[int, int]] = deque()
@@ -404,6 +464,8 @@ def process_trip(trip_id: str) -> None:
         events: list[dict[str, Any]] = []
         total_duration = 0.0
         processed_segments = 0
+        scene_profiler = SceneProfiler()
+        scene_counts: Counter[str] = Counter()
 
         for segment in all_segments:
             processed_segments += 1
@@ -434,18 +496,25 @@ def process_trip(trip_id: str) -> None:
 
                 ts_local_ms = int((frame_idx / max(fps, 1.0)) * 1000)
                 ts_global_sec = segment.start_sec + (ts_local_ms / 1000.0)
-                if segment.stream == "cabin":
+                if segment.stream in {"cabin", "rear"}:
                     ts_global_sec -= sync_offset
                 now_ms = int(ts_global_sec * 1000)
                 delta_ms = int(1000 / settings.target_fps)
 
                 raw: dict[str, tuple[bool, float, dict[str, Any]]] = {}
                 dets: list[dict] = []
+                scene_ctx = scene_profiler.profile(frame)
+                scene_counts[scene_ctx["scenario"]] += 1
+                adaptive = _adaptive_thresholds(scene_ctx["scenario"], float(scene_ctx["reliability"]))
+                can_trigger = float(scene_ctx["reliability"]) >= settings.min_scene_reliability
 
                 if frame_idx % (sample_step * yolo_every) == 0:
-                    dets = obj.detect(frame)
+                    dets = obj.detect(frame, conf=adaptive["yolo_conf"])
 
-                if segment.stream == "cabin" or (segment.stream == "front" and not cabin_segments):
+                apply_dms = segment.stream == "cabin" or (
+                    segment.stream == "front" and not cabin_segments and settings.primary_stream_for_dms == "front"
+                )
+                if apply_dms:
                     face_metrics = face.detect_metrics(frame)
                     seatbelt_missing, seatbelt_conf = seatbelt.detect(frame)
                     perclos_window.append((now_ms, 1 if face_metrics["eyes_closed"] else 0))
@@ -464,7 +533,7 @@ def process_trip(trip_id: str) -> None:
                     microsleep_active = closed_streak_ms >= 1500
                     microsleep_conf = min(1.0, closed_streak_ms / 3000)
 
-                    scene = detect_phone_obstruction_tailgating(dets, frame.shape) if dets else {}
+                    scene_det = detect_phone_obstruction_tailgating(dets, frame.shape) if dets else {}
                     raw["driver_fatigue"] = (
                         fatigue_active,
                         fatigue_conf,
@@ -477,28 +546,72 @@ def process_trip(trip_id: str) -> None:
                         {"yaw_ratio": round(face_metrics["yaw_ratio"], 3)},
                     )
                     raw["mobile_phone_use"] = (
-                        bool(scene.get("phone", False)),
-                        float(scene.get("phone_conf", 0.0)),
+                        bool(scene_det.get("phone", False)),
+                        float(scene_det.get("phone_conf", 0.0)),
                         {},
                     )
                     raw["seatbelt_not_worn"] = (seatbelt_missing, seatbelt_conf, {})
 
                 if segment.stream == "front":
                     lane_dev, lane_conf, lane_offset = lane.detect(frame)
-                    scene = detect_phone_obstruction_tailgating(dets, frame.shape) if dets else {}
-                    raw["lane_deviation"] = (lane_dev, lane_conf, {"offset_ratio": round(lane_offset, 3)})
+                    scene_det = detect_phone_obstruction_tailgating(dets, frame.shape) if dets else {}
+                    tracking = front_tracker.update(scene_det, ts_global_sec)
+                    ttc_sec = float(tracking.get("ttc_sec", 0.0))
+                    lane_active = lane_dev and lane_offset >= adaptive["lane_offset"]
+                    lane_conf = min(1.0, max(lane_conf, (lane_offset - adaptive["lane_offset"]) * 5.0))
+                    raw["lane_deviation"] = (lane_active, lane_conf, {"offset_ratio": round(lane_offset, 3)})
                     raw["obstruction_ahead"] = (
-                        bool(scene.get("obstruction", False)),
-                        float(scene.get("obstruction_conf", 0.0)),
-                        {"lead_distance_m": round(float(scene.get("lead_distance_m", 0.0)), 2)},
+                        bool(scene_det.get("obstruction", False)),
+                        float(scene_det.get("obstruction_conf", 0.0)),
+                        {
+                            "lead_distance_m": round(float(scene_det.get("lead_distance_m", 0.0)), 2),
+                            "ttc_sec": ttc_sec,
+                            "scenario": scene_ctx["scenario"],
+                        },
                     )
                     raw["tailgating"] = (
-                        bool(scene.get("tailgating", False)),
-                        float(scene.get("tailgating_conf", 0.0)),
-                        {"lead_distance_m": round(float(scene.get("lead_distance_m", 0.0)), 2)},
+                        (
+                            bool(scene_det.get("tailgating", False))
+                            and float(scene_det.get("lead_distance_m", 999.0)) < adaptive["tail_distance"]
+                        )
+                        or (ttc_sec > 0 and ttc_sec < settings.ttc_warning_sec),
+                        max(float(scene_det.get("tailgating_conf", 0.0)), min(1.0, (settings.ttc_warning_sec - max(ttc_sec, 0.0)) / max(settings.ttc_warning_sec, 0.1)) if ttc_sec > 0 else 0.0),
+                        {
+                            "lead_distance_m": round(float(scene_det.get("lead_distance_m", 0.0)), 2),
+                            "ttc_sec": ttc_sec,
+                            "scenario": scene_ctx["scenario"],
+                        },
+                    )
+
+                if segment.stream == "rear":
+                    scene_det = detect_phone_obstruction_tailgating(dets, frame.shape) if dets else {}
+                    tracking = rear_tracker.update(scene_det, ts_global_sec)
+                    ttc_sec = float(tracking.get("ttc_sec", 0.0))
+                    (rear_obs_active, rear_obs_conf), (rear_tail_active, rear_tail_conf) = _rear_risk_from_detections(scene_det)
+                    raw["rear_obstruction_behind"] = (
+                        rear_obs_active,
+                        rear_obs_conf,
+                        {
+                            "rear_distance_m": round(float(scene_det.get("lead_distance_m", 0.0)), 2),
+                            "rear_ttc_sec": ttc_sec,
+                            "scenario": scene_ctx["scenario"],
+                        },
+                    )
+                    raw["rear_tailgating_behind"] = (
+                        rear_tail_active or (ttc_sec > 0 and ttc_sec < settings.ttc_warning_sec),
+                        max(rear_tail_conf, min(1.0, (settings.ttc_warning_sec - max(ttc_sec, 0.0)) / max(settings.ttc_warning_sec, 0.1)) if ttc_sec > 0 else 0.0),
+                        {
+                            "rear_distance_m": round(float(scene_det.get("lead_distance_m", 0.0)), 2),
+                            "rear_ttc_sec": ttc_sec,
+                            "scenario": scene_ctx["scenario"],
+                        },
                     )
 
                 for event_type, (active, conf, metadata) in raw.items():
+                    if not can_trigger:
+                        continue
+                    if conf < adaptive["min_event_conf"]:
+                        continue
                     emitted = debouncer.update(
                         event_type=event_type,
                         active=active,
@@ -509,7 +622,11 @@ def process_trip(trip_id: str) -> None:
                             "stream": segment.stream,
                             "clip_name": segment.path.name,
                             "video_path": str(segment.path),
-                            "metadata": metadata,
+                            "metadata": {
+                                **metadata,
+                                "scene_reliability": round(float(scene_ctx["reliability"]), 3),
+                                "lighting": scene_ctx["scenario"],
+                            },
                             "local_ts_sec": round(ts_local_ms / 1000.0, 3),
                         },
                     )
@@ -574,7 +691,15 @@ def process_trip(trip_id: str) -> None:
                 lane_score=score_dict["lane_score"],
                 following_distance_score=score_dict["following_distance_score"],
                 overall_score=score_dict["overall_score"],
-                details_json=json.dumps({**score_dict["details"], "limitations": limitations}),
+                details_json=json.dumps(
+                    {
+                        **score_dict["details"],
+                        "limitations": limitations,
+                        "scene_distribution": dict(scene_counts),
+                        "streams_present": sorted({s.stream for s in all_segments}),
+                        "road_profile": settings.road_profile,
+                    }
+                ),
             )
         )
 
@@ -604,8 +729,19 @@ def process_trip(trip_id: str) -> None:
                 "sync_offset_seconds": trip.sync_offset_seconds,
                 "day_folder": trip.day_folder,
             },
+            "model_profile": {
+                "road_profile": settings.road_profile,
+                "target_fps": settings.target_fps,
+                "day_night_aware": True,
+                "rear_stream_enabled": True,
+                "object_model_path": settings.object_model_path,
+                "seatbelt_model_path": settings.seatbelt_model_path or "heuristic",
+                "ttc_warning_sec": settings.ttc_warning_sec,
+            },
             "scores": score_dict,
             "events": events_for_report,
+            "scene_distribution": dict(scene_counts),
+            "streams_present": sorted({s.stream for s in all_segments}),
             "limitations": limitations,
         }
 

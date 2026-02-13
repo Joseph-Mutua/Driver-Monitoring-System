@@ -5,11 +5,13 @@ type Props = {
   driverId: string;
   vehicleId: string;
   frontFiles: File[];
+  rearFiles: File[];
   cabinFiles: File[];
   onDayFolder: (value: string) => void;
   onDriverId: (value: string) => void;
   onVehicleId: (value: string) => void;
   onFrontFiles: (files: File[]) => void;
+  onRearFiles: (files: File[]) => void;
   onCabinFiles: (files: File[]) => void;
   onAnalyze: () => void;
   disabled?: boolean;
@@ -21,11 +23,13 @@ export default function UploadPanel(props: Props) {
     driverId,
     vehicleId,
     frontFiles,
+    rearFiles,
     cabinFiles,
     onDayFolder,
     onDriverId,
     onVehicleId,
     onFrontFiles,
+    onRearFiles,
     onCabinFiles,
     onAnalyze,
     disabled
@@ -39,7 +43,7 @@ export default function UploadPanel(props: Props) {
         </div>
         <div>
           <h2 className="font-display text-xl font-semibold text-ink">Trip Uploader</h2>
-          <p className="text-xs text-slate-500">Front camera required, cabin optional</p>
+          <p className="text-xs text-slate-500">Front camera required, rear recommended, cabin optional</p>
         </div>
       </div>
 
@@ -64,14 +68,19 @@ export default function UploadPanel(props: Props) {
         />
       </div>
 
-      <div className="mt-5 grid gap-4 sm:grid-cols-2">
+      <div className="mt-5 grid gap-4 lg:grid-cols-3">
         <label className="file-block">
           <span className="file-label">Front stream (required)</span>
           <input type="file" multiple accept=".mp4" className="file-input" onChange={(e) => onFrontFiles(Array.from(e.target.files ?? []))} />
           <span className="file-count">{frontFiles.length} file{frontFiles.length !== 1 ? "s" : ""} selected</span>
         </label>
         <label className="file-block">
-          <span className="file-label">Cabin stream (optional)</span>
+          <span className="file-label">Rear stream (recommended)</span>
+          <input type="file" multiple accept=".mp4" className="file-input" onChange={(e) => onRearFiles(Array.from(e.target.files ?? []))} />
+          <span className="file-count">{rearFiles.length} file{rearFiles.length !== 1 ? "s" : ""} selected</span>
+        </label>
+        <label className="file-block">
+          <span className="file-label">Cabin stream (optional, DMS)</span>
           <input type="file" multiple accept=".mp4" className="file-input" onChange={(e) => onCabinFiles(Array.from(e.target.files ?? []))} />
           <span className="file-count">{cabinFiles.length} file{cabinFiles.length !== 1 ? "s" : ""} selected</span>
         </label>

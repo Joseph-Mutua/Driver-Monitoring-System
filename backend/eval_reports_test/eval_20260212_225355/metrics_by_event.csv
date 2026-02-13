@@ -1,0 +1,4 @@
+event_type,tp,fp,fn,precision,recall,f1
+driver_fatigue,1,0,0,1.0,1.0,1.0
+lane_deviation,1,0,0,1.0,1.0,1.0
+tailgating,1,0,0,1.0,1.0,1.0

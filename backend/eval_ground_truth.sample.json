@@ -1,0 +1,30 @@
+{
+  "trips": [
+    {
+      "trip_id": "trip_001",
+      "events": [
+        {
+          "type": "lane_deviation",
+          "ts_ms_start": 12000,
+          "ts_ms_end": 13800,
+          "stream": "front",
+          "scenario": "day"
+        },
+        {
+          "type": "tailgating",
+          "ts_ms_start": 40200,
+          "ts_ms_end": 42500,
+          "stream": "front",
+          "scenario": "night"
+        },
+        {
+          "type": "driver_fatigue",
+          "ts_ms_start": 78500,
+          "ts_ms_end": 96000,
+          "stream": "cabin",
+          "scenario": "night"
+        }
+      ]
+    }
+  ]
+}

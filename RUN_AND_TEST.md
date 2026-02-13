@@ -186,7 +186,9 @@ Or open **http://localhost:8000/docs** and try:
 3. **Upload a trip**
    - Day folder: e.g. `2025-02-12`
    - Optionally set Driver ID and Vehicle ID
-   - Add **at least one front-camera MP4** (cabin MP4s optional)
+  - Add **at least one front-camera MP4**
+  - Add rear MP4s when available (recommended)
+  - Add cabin MP4s only if you have an interior-facing camera (optional)
    - Click **Analyze** (or equivalent CTA)
 4. **Verify**
    - A new trip appears with status “processing” then “done” (or “failed” if something broke).
@@ -300,12 +302,22 @@ npm run test:run
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/health` | Health check |
-| POST | `/api/trips` | Create trip (multipart: day_folder, driver_id, vehicle_id, front_files, cabin_files) |
+| POST | `/api/trips` | Create trip (multipart: day_folder, driver_id, vehicle_id, front_files, rear_files, cabin_files) |
 | POST | `/api/trips/{id}/complete-upload` | Start processing a trip |
 | GET | `/api/trips` | List trips (query: `limit`) |
 | GET | `/api/trips/{id}` | Get trip by id |
 | GET | `/api/trips/{id}/events` | Get events for trip |
 | GET | `/api/trips/{id}/scores` | Get scores for trip |
+| POST | `/api/evaluation/run` | Run evaluation from provided GT + predictions path |
+| POST | `/api/evaluation/run-range` | Run evaluation for completed trips in date range |
+| GET | `/api/evaluation/reports` | List recent evaluation reports |
+| POST | `/api/ml/pipeline/run` | Start ML training pipeline job |
+| GET | `/api/ml/pipeline/jobs` | List ML training jobs |
+| GET | `/api/ml/pipeline/jobs/{id}` | Get ML job status |
+| GET | `/api/ml/pipeline/jobs/{id}/log` | Get ML job log tail |
+| POST | `/api/ml/pipeline/jobs/{id}/cancel` | Cancel running/queued ML job |
+| POST | `/api/ml/pipeline/jobs/{id}/retry` | Retry a failed/cancelled ML job |
+| GET | `/api/ml/pipeline/jobs/{id}/artifacts/{artifact_key}` | Download ML artifact |
 | POST | `/api/analyze/day` | Legacy: single-call analyze (day_folder + files) |
 | GET | `/api/jobs/{job_id}` | Legacy: job status |
 | GET | `/api/reports/{job_id}` | Legacy: JSON report |
@@ -340,3 +352,79 @@ Static files:
 - [ ] E2E: Upload at least one front MP4 → Analyze → wait for “done” → check events, scores, and PDF  
 
 For more on architecture and data schema, see `README.md` and `SYSTEM_DESIGN.md`.
+
+---
+
+## 11. Training + Acceptance Pipeline
+
+Use the scaffold in `backend/ml` for production model upgrades:
+
+1. Install training dependencies:
+```powershell
+cd d:\WORK\DMS\backend
+.\.venv\Scripts\python -m pip install -r ml\requirements-train.txt
+```
+
+2. Prepare a manifest (use `ml\data\manifest.sample.jsonl` as template).
+
+3. Run full pipeline:
+```powershell
+.\ml\scripts\run_pipeline.ps1 -Manifest ml\data\manifest.jsonl -OutputRoot ml\artifacts\run1 -GroundTruth ml\data\ground_truth.json
+```
+
+4. The pipeline performs:
+- dataset validation and leakage checks
+- split generation
+- model training
+- calibration artifact generation
+- release metrics + acceptance gate checks
+
+5. Gate results:
+- pass: model candidate is eligible for promotion
+- fail: review `ml\artifacts\run1\release_metrics.json` and retrain/tune
+
+## 10. Full Evaluation Suite
+
+The backend now includes a complete evaluation module in `backend/app/eval`.
+
+### 10.1 Ground truth format
+Use `backend/eval_ground_truth.sample.json` as template:
+- top-level `trips[]`
+- each trip has `trip_id` and `events[]`
+- each event needs:
+  - `type`
+  - `ts_ms_start`
+  - `ts_ms_end`
+  - optional `stream` (`front|rear|cabin`)
+  - optional `scenario` (`day|dusk|night`)
+
+### 10.2 Run evaluation
+From `backend/`:
+
+```powershell
+.\.venv\Scripts\python -m app.eval.run --ground-truth .\eval_ground_truth.sample.json --predictions .\reports
+```
+
+Or:
+
+```powershell
+.\run_eval.ps1 -GroundTruth .\eval_ground_truth.sample.json -Predictions .\reports
+```
+
+### 10.3 What it computes
+- Overall precision/recall/F1 with temporal matching
+- Per-event, per-stream, and per-scenario breakdown
+- Confidence calibration (ECE + Brier + reliability diagram)
+- Threshold sweeps and optimal global/per-event threshold recommendations
+- False positive/false negative examples for error analysis
+
+### 10.4 Output files
+Saved under `backend/eval_reports/eval_YYYYMMDD_HHMMSS/`:
+- `summary.json`
+- `evaluation.json`
+- `metrics_by_event.csv`
+- `metrics_by_stream.csv`
+- `metrics_by_scenario.csv`
+- `threshold_sweep.csv`
+- `reliability_diagram.png`
+- `threshold_curve.png`
