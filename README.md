@@ -1,6 +1,6 @@
 # Driver Monitoring + ADAS Platform
+Driver Monitoring + ADAS Platform provides an end-to-end solution for driver behavior analytics and advanced driver assistance using dashcam video streams. It combines a Python backend for event detection and report generation with a modern React frontend for convenient data review and dashboarding.
 
-This implementation now follows the trip-based architecture you specified.
 
 ## Implemented functionality
 - Upload trip files (front required, rear recommended, cabin optional for strong DMS)
